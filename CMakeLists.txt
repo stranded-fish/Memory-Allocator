@@ -4,4 +4,4 @@ project(Memory_Allocator)
 set(CMAKE_CXX_STANDARD 14)
 
 add_executable(Memory_Allocator
-        main.cpp Screen.cpp Screen.h)
+        main.cc Screen.cc Screen.h Airplane.cc Airplane.h)

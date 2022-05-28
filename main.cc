@@ -4,8 +4,9 @@
 
 #include <iostream>
 #include "Screen.h"
+#include "Airplane.h"
 
-#pragma pack(8)
+#pragma pack(4)
 
 using namespace std;
 
@@ -35,7 +36,33 @@ void Screen_test() {
     }
 }
 
+const int Airplane::BLOCK_SIZE = 512;
+Airplane *Airplane::headOfFreeList = nullptr;
+
+// per-class allocator - test 2
+void Airplane_test() {
+    cout << sizeof(Airplane) << endl;
+    size_t const N = 100;
+    Airplane *p[N];
+
+    for (auto & i : p) {
+        i = new Airplane;
+    }
+
+    for (int i = 0; i < 10; ++i) {
+        cout << p[i] << endl;
+    }
+
+    for (auto & i : p) {
+        delete i;
+    }
+}
+
+
 int main() {
     // per-class allocator test 1
-    Screen_test();
+    // Screen_test();
+
+    // per-class allocator test 2
+    Airplane_test();
 }

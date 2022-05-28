@@ -123,6 +123,82 @@ D:\FileD\Workspace_Local\Memory-Allocator\cmake-build-debug\Memory_Allocator.exe
 
 ## Per-class allocator 2
 
+重载 `operator new / delete`：
+
+```C++
+void *Airplane::operator new(size_t size) {
+    if (size != sizeof(Airplane)) return ::operator new(size);
+
+    Airplane *p = headOfFreeList;
+    // 当 p 非空，直接移动指针，否则申请 block 大小内存
+    if (p) headOfFreeList = p->next;
+    else {
+        auto *newBlock = static_cast<Airplane *> (::operator new(BLOCK_SIZE * sizeof(Airplane)));
+        // 内存切片
+        for (int i = 1; i < BLOCK_SIZE - 1; ++i) {
+            newBlock[i].next = &newBlock[i + 1];
+        }
+        newBlock[BLOCK_SIZE - 1].next = nullptr; // 结束 list
+        p = newBlock;
+        headOfFreeList = &newBlock[1];
+    }
+    return p;
+}
+
+void Airplane::operator delete(void *deadObject, size_t size) {
+    if (deadObject == nullptr) return;
+    if (size != sizeof(Airplane)) {
+        ::operator delete(deadObject);
+        return;
+    }
+
+    // 同第一版，将收回的指针插入到头部
+    auto *carcass = static_cast<Airplane*>(deadObject);
+    carcass->next = headOfFreeList;
+    headOfFreeList = carcass;
+}
+```
+
+测试：
+
+```C++
+// per-class allocator - test 2
+void Airplane_test() {
+    cout << sizeof(Airplane) << endl;
+    size_t const N = 100;
+    Airplane *p[N];
+
+    for (auto & i : p) {
+        i = ::new Airplane;
+    }
+
+    for (int i = 0; i < 10; ++i) {
+        cout << p[i] << endl;
+    }
+
+    for (auto & i : p) {
+        ::delete i;
+    }
+}
+```
+
+```bash
+D:\FileD\Workspace_Local\Memory-Allocator\cmake-build-debug\Memory_Allocator.exe
+8
+0x642490
+0x642498
+0x6424a0
+0x6424a8
+0x6424b0
+0x6424b8
+0x6424c0
+0x6424c8
+0x6424d0
+0x6424d8
+```
+
+由测试结果可知，调用重载 `operator new / delete` 数组相邻元素间隔 8（存在内存对齐），去掉了 cookie 部分。
+
 ## Static allocator
 
 ## Macro for static allocator
