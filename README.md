@@ -6,8 +6,8 @@
 
 - [C++ Memory Allocator](#c-memory-allocator)
   - [自定义内存管理的动机](#自定义内存管理的动机)
-  - [Per-class allocator 1](#per-class-allocator-1)
-  - [Per-class allocator 2](#per-class-allocator-2)
+  - [Per-class allocator - Screen](#per-class-allocator---screen)
+  - [Per-class allocator - Airplane](#per-class-allocator---airplane)
   - [Static allocator](#static-allocator)
   - [Macro for static allocator](#macro-for-static-allocator)
   - [参考资料](#参考资料)
@@ -25,9 +25,9 @@
 
 通过自定义内存管理机制，希望可以减少 `malloc` 调用次数，同时避免过多 `cookie` 浪费空间。
 
-## Per-class allocator 1
+## Per-class allocator - Screen
 
-重载 `operator new / delete`：
+重载成员 `operator new / delete`：
 
 ```C++
 void *Screen::operator new(size_t size) {
@@ -121,9 +121,9 @@ D:\FileD\Workspace_Local\Memory-Allocator\cmake-build-debug\Memory_Allocator.exe
 * 每个对象都包含一个 `next` 指针，需要占用 8 个字节；
 * `operator delete` 没有 `free` 其占用的内存，而是将其插入到了空闲链表的头部。
 
-## Per-class allocator 2
+## Per-class allocator - Airplane
 
-重载 `operator new / delete`：
+重载成员 `operator new / delete`：
 
 ```C++
 void *Airplane::operator new(size_t size) {
@@ -201,7 +201,125 @@ D:\FileD\Workspace_Local\Memory-Allocator\cmake-build-debug\Memory_Allocator.exe
 
 ## Static allocator
 
+重载成员 `operator new / delete`
+
+```C++
+namespace my_allocator {
+    void *allocator::allocate(size_t size) {
+        obj *p;
+        if (!freeStore) {
+            size_t chunk = CHUNK * size;
+            freeStore = p = static_cast<obj *>(malloc(chunk));
+            // 内存切片
+            for (int i = 0; i < (CHUNK - 1); ++i) {
+                p->next = (obj *) ((char *) p + size);
+                p = p->next;
+            }
+            p->next = nullptr; // 结束 list
+        }
+        p = freeStore;
+        freeStore = freeStore->next;
+        return p;
+    }
+
+    void allocator::deallocate(void *p, size_t) {
+        // 将收回的指针插入到头部
+        ((obj *) p)->next = freeStore;
+        freeStore = (obj *) p;
+    }
+}
+```
+
+使用：
+
+```C++
+class Foo {
+public:
+    long long L;
+    string str;
+
+    // static allocator 成员
+    static my_allocator::allocator myAlloc;
+public:
+    Foo() : L(0), str("10") {}
+
+    explicit Foo(long l) : L(l) {}
+    
+    // 重载
+    void *operator new(size_t size) {
+        return myAlloc.allocate(size);
+    }
+
+    // 重载
+    void operator delete(void *pdead, size_t size) {
+        return myAlloc.deallocate(pdead, size);
+    }
+};
+```
+
+测试：
+
+```bash
+D:\FileD\Workspace_Local\Memory-Allocator\cmake-build-debug\Memory_Allocator.exe
+sizeof(Foo)=40
+0xea15d0 0
+0xea15f8 1
+0xea1620 2
+0xea1648 3
+0xea1670 4
+0xea16a0 5
+0xea16c8 6
+0xea16f0 7
+0xea1718 8
+0xea1740 9
+```
+
+由测试结果可知，每 5 个相邻元素间隔 40，去掉了 cookie 部分。
+
 ## Macro for static allocator
+
+通过宏定义简化：
+
+```C++
+#define DECLARE_POOL_ALLOC() \
+public:                      \
+    void *operator new(size_t size) { return myAlloc.allocate(size); } \
+    void operator delete(void *pdead, size_t size) { return myAlloc.deallocate(pdead, size); } \
+protected:                   \
+    static my_allocator::allocator myAlloc;
+
+#define IMPLEMENT_POOL_ALLOC(class_name) my_allocator::allocator class_name::myAlloc;
+```
+
+使用：
+
+```C++
+class Goo {
+DECLARE_POOL_ALLOC()
+private:
+    long long val1;
+    int val2;
+    int val3;
+};
+
+IMPLEMENT_POOL_ALLOC(Goo)
+
+// macro for static allocator test 4
+void macro_test() {
+    const int N = 100;
+    Goo *p[N];
+    cout << sizeof(Goo) << endl;
+    for (int i = 0; i < 10; ++i) {
+        p[i] = new Goo;
+        // p[i] = ::new Goo;
+        cout << p[i] << endl;
+    }
+    for (int i  = 0; i < 10; ++i) {
+        delete p[i];
+        // ::delete p[i];
+    }
+}
+```
 
 ## 参考资料
 
